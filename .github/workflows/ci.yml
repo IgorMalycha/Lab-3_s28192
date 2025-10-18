@@ -1,4 +1,4 @@
-name: CI
+name: Build and Evaluate Model
 
 on:
   push:
@@ -9,24 +9,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout repo
+      uses: actions/checkout@v3
 
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: 3.11
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run training script
-      run: |
-        python model.py
+    - name: Run model script
+      run: python model.py
 
-    - name: Upload PDF as artifact
+    - name: Upload results
       uses: actions/upload-artifact@v4
       with:
-        name: model-report
-        path: docs/README.pdf
+        name: model-artifacts
+        path: |
+          best_model.pkl
+          *.png
