@@ -36,10 +36,13 @@ print("="*70)
 print("### Eksploracja danych (braki, typy, statystyki)")
 print("="*70)
 
-total_cells = np.product(df.shape)
+# Liczenie braków
+total_cells = np.prod(df.shape)
 missing_count = df.isnull().sum().sum()
 missing_percent = missing_count / total_cells * 100
 print(f"Brakujące przed czyszczeniem: {missing_count} ({missing_percent:.3f} % komórek)\n")
+
+# Braki wg kolumn
 print("Braki wg kolumn (przed czyszczeniem):")
 print(df.isnull().sum()[df.isnull().sum() > 0])
 
