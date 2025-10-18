@@ -18,7 +18,7 @@ df = pd.read_csv('CollegeDistance.csv')
 # 2. Konwersja kolumn boolean zapisanych jako string na int
 bool_cols = ['fcollege', 'mcollege', 'home', 'urban']
 for col in bool_cols:
-    df[col] = df[col].map({'True': 1, 'False': 0})
+    df[col] = df[col].map({'yes': 1, 'no': 0})
 
 # 3. Eksploracja danych - tylko kolumny numeryczne
 numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
@@ -38,7 +38,7 @@ y = df['score']
 
 # 6. Identyfikacja zmiennych numerycznych i kategorycznych
 num_features = X.select_dtypes(include=['int64', 'float64']).columns
-cat_features = X.select_dtypes(include=['object']).columns  # np. gender, ethnicity, income, region
+cat_features = X.select_dtypes(include=['object']).columns  # gender, ethnicity, income, region
 
 # 7. Przygotowanie pipeline
 num_transformer = StandardScaler()
