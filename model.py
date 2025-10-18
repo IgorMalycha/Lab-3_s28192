@@ -1,20 +1,24 @@
+# ======================================
+#  ZADANIE 1 - MODEL PREDYKCYJNY
+#  Autor: Student XYZ
+#  Plik: model.py
+# ======================================
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from fpdf import FPDF
-import joblib
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import warnings
+
 warnings.filterwarnings("ignore")
 
-print("\n========================")
+print("========================")
 print("  ZADANIE 1 - MODEL PREDYKCYJNY")
 print("========================\n")
 
@@ -22,189 +26,157 @@ print("========================\n")
 # 1️⃣ Wczytanie danych
 # ===============================
 print("📂 Wczytywanie danych...")
+
 data = pd.read_csv("CollegeDistance.csv")
-print(f"Liczba rekordów: {data.shape[0]}")
-print(f"Liczba kolumn: {data.shape[1]}\n")
+
+print(f"Liczba rekordów: {len(data)}")
+print(f"Liczba kolumn: {len(data.columns)}\n")
+
+print("Podgląd danych:")
+print(data.head(), "\n")
 
 # ===============================
-# 2️⃣ Wstępna analiza danych
+# 2️⃣ Wstępna analiza danych i czyszczenie
 # ===============================
-print("🔍 Analiza brakujących danych...")
-missing_before = data.isnull().sum().sum()
-print(f"Brakujące wartości przed czyszczeniem: {missing_before}")
+print("🔍 Analiza brakujących danych i czyszczenie...")
 
-# Jeśli są braki – imputacja medianą lub trybem
-for col in data.columns:
-    if data[col].isnull().any():
-        if data[col].dtype == "object":
-            data[col].fillna(data[col].mode()[0], inplace=True)
-        else:
-            data[col].fillna(data[col].median(), inplace=True)
+# Liczba braków przed czyszczeniem
+missing_before_total = data.isnull().sum().sum()
+print(f"Brakujące wartości przed czyszczeniem: {missing_before_total}")
 
-missing_after = data.isnull().sum().sum()
-print(f"Brakujące wartości po czyszczeniu: {missing_after}")
+# Zamiana błędnych wartości tekstowych na NaN
+data = data.replace([" ", "NA", "N/A", "na", "NaN", "None"], np.nan)
 
-# Statystyka czyszczenia
-if missing_before > 0:
-    print(f"✅ Uzupełniono {(missing_before - missing_after) / len(data) * 100:.2f}% danych.\n")
+# Kolumny logiczne
+bool_cols = ['fcollege', 'mcollege', 'home', 'urban']
+for col in bool_cols:
+    data[col] = data[col].map({'True': 1, 'False': 0, True: 1, False: 0})
+    data[col] = data[col].fillna(data[col].median())
+
+# Wypełnianie braków numerycznych medianą
+for col in data.select_dtypes(include=[np.number]).columns:
+    if data[col].isnull().sum() > 0:
+        median_val = data[col].median()
+        data[col].fillna(median_val, inplace=True)
+        print(f"🧮 Wypełniono braki w kolumnie '{col}' medianą: {median_val:.3f}")
+
+# Wypełnianie braków kategorycznych trybem
+for col in data.select_dtypes(include=["object"]).columns:
+    if data[col].isnull().sum() > 0:
+        mode_val = data[col].mode()[0]
+        data[col].fillna(mode_val, inplace=True)
+        print(f"🗂️ Wypełniono braki w kolumnie '{col}' trybem: {mode_val}")
+
+missing_after_total = data.isnull().sum().sum()
+print(f"\nBrakujące wartości po czyszczeniu: {missing_after_total}")
+
+if missing_after_total == 0:
+    print("✅ Wszystkie dane kompletne!\n")
 else:
-    print("✅ Brak brakujących danych.\n")
+    print("⚠️ Nadal występują NaN-y po czyszczeniu!\n")
 
 # ===============================
-# 3️⃣ Konwersje typów i poprawki nazw
+# 3️⃣ Przygotowanie danych
 # ===============================
 print("🧹 Przygotowanie danych...")
 
-# Poprawna nazwa kolumny
-categorical_features = ['gender', 'ethnicity', 'income', 'region']
-
-# Konwersja kolumn bool na 0/1
-bool_cols = ['fcollege', 'mcollege', 'home', 'urban']
-for col in bool_cols:
-    data[col] = data[col].map({'True': 1, 'False': 0})
-
-numerical_features = ['unemp', 'wage', 'distance', 'tuition', 'education'] + bool_cols
-
-# Usuwanie kolumn niepotrzebnych
+# Usunięcie kolumny identyfikatora
 if "rownames" in data.columns:
-    data = data.drop(columns=["rownames"])
+    data.drop(columns=["rownames"], inplace=True)
     print("🗑️ Kolumna 'rownames' została usunięta.\n")
 
-# ===============================
-# 4️⃣ Eksploracja danych
-# ===============================
-print("📊 Tworzenie wykresów eksploracyjnych...")
-sns.histplot(data['score'], kde=True)
-plt.title("Rozkład zmiennej docelowej: score")
-plt.savefig("score_distribution.png")
-plt.clf()
+# Zmienna docelowa
+target = "score"
+X = data.drop(columns=[target])
+y = data[target]
 
-sns.boxplot(x='gender', y='score', data=data)
-plt.title("Wartość score w zależności od płci")
-plt.savefig("score_by_gender.png")
-plt.clf()
+# Identyfikacja typów zmiennych
+num_features = X.select_dtypes(include=[np.number]).columns.tolist()
+cat_features = X.select_dtypes(include=["object"]).columns.tolist()
+
+print("🔢 Zmienne numeryczne:", num_features)
+print("🔠 Zmienne kategoryczne:", cat_features, "\n")
 
 # ===============================
-# 5️⃣ Podział danych
+# 4️⃣ Podział danych
 # ===============================
-X = data.drop('score', axis=1)
-y = data['score']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
-
-print(f"📈 Podział danych:")
+print("📈 Podział danych:")
 print(f" - Zbiór treningowy: {len(X_train)} próbek ({len(X_train)/len(data)*100:.1f}%)")
 print(f" - Zbiór testowy: {len(X_test)} próbek ({len(X_test)/len(data)*100:.1f}%)\n")
 
 # ===============================
-# 6️⃣ Preprocessing
+# 5️⃣ Transformacje i pipeline
 # ===============================
+numeric_transformer = Pipeline(steps=[('scaler', StandardScaler())])
+categorical_transformer = Pipeline(steps=[('encoder', OneHotEncoder(handle_unknown='ignore'))])
+
 preprocessor = ColumnTransformer(
     transformers=[
-        ('num', StandardScaler(), numerical_features),
-        ('cat', OneHotEncoder(drop='first'), categorical_features)
-    ])
+        ('num', numeric_transformer, num_features),
+        ('cat', categorical_transformer, cat_features)
+    ]
+)
 
 # ===============================
-# 7️⃣ Trenowanie i porównanie modeli
+# 6️⃣ Trening i ewaluacja modeli
 # ===============================
-print("🤖 Trenowanie modeli...\n")
 models = {
-    'LinearRegression': LinearRegression(),
-    'RandomForest': RandomForestRegressor(random_state=42),
-    'GradientBoosting': GradientBoostingRegressor(random_state=42)
+    "Linear Regression": LinearRegression(),
+    "Ridge Regression": Ridge(alpha=1.0),
+    "Random Forest": RandomForestRegressor(n_estimators=100, random_state=42)
 }
 
+# Walidacja danych (czy nie zawierają NaN)
+assert not X_train.isnull().any().any(), "❌ Zbiór treningowy zawiera NaN!"
+assert not X_test.isnull().any().any(), "❌ Zbiór testowy zawiera NaN!"
+
 results = []
-best_model = None
-best_score = -np.inf
-best_model_name = ""
+
+print("🤖 Trenowanie modeli...\n")
 
 for name, model in models.items():
     print(f"➡️  Trening modelu: {name}...")
     pipeline = Pipeline(steps=[('preprocessor', preprocessor),
                                ('model', model)])
     pipeline.fit(X_train, y_train)
+
+    # Predykcja i metryki
     y_pred = pipeline.predict(X_test)
+
+    r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
     mse = mean_squared_error(y_test, y_pred)
     rmse = np.sqrt(mse)
-    r2 = r2_score(y_test, y_pred)
-    results.append((name, mae, mse, rmse, r2))
-    print(f"   MAE: {mae:.3f}, MSE: {mse:.3f}, RMSE: {rmse:.3f}, R²: {r2:.3f}\n")
 
-    if r2 > best_score:
-        best_score = r2
-        best_model = pipeline
-        best_model_name = name
+    results.append({
+        "Model": name,
+        "R²": r2,
+        "MAE": mae,
+        "MSE": mse,
+        "RMSE": rmse
+    })
 
-print("==============================")
-print(f"🏆 Najlepszy model: {best_model_name} (R² = {best_score:.3f})")
-print("==============================\n")
-
-# ===============================
-# 8️⃣ Ewaluacja i zapis modelu
-# ===============================
-y_pred = best_model.predict(X_test)
-mae = mean_absolute_error(y_test, y_pred)
-mse = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse)
-r2 = r2_score(y_test, y_pred)
-
-print("📋 Końcowa ewaluacja najlepszego modelu:")
-print(f" - MAE  (średni błąd bezwzględny): {mae:.4f}")
-print(f" - MSE  (średni błąd kwadratowy): {mse:.4f}")
-print(f" - RMSE (pierwiastek z MSE): {rmse:.4f}")
-print(f" - R²   (współczynnik determinacji): {r2:.4f}\n")
-
-# Zapis modelu
-joblib.dump(best_model, 'best_model.pkl')
-print("💾 Zapisano najlepszy model jako 'best_model.pkl'\n")
+    print(f"📊 Wyniki {name}:")
+    print(f"   R²:   {r2:.4f}")
+    print(f"   MAE:  {mae:.4f}")
+    print(f"   MSE:  {mse:.4f}")
+    print(f"   RMSE: {rmse:.4f}\n")
 
 # ===============================
-# 9️⃣ Generowanie PDF z raportem
+# 7️⃣ Podsumowanie wyników
 # ===============================
-print("📝 Generowanie raportu PDF...")
+print("📋 PODSUMOWANIE MODELI\n")
+results_df = pd.DataFrame(results)
+print(results_df.to_string(index=False))
 
-def create_pdf():
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "Analiza i Model Predykcyjny - Score", 0, 1, 'C')
+best_model = results_df.loc[results_df["R²"].idxmax()]
+print("\n🏆 Najlepszy model:", best_model["Model"])
+print(f"   R² = {best_model['R²']:.4f}, MAE = {best_model['MAE']:.4f}")
 
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "Statystyki opisowe:", 0, 1)
-    stats_text = data.describe().to_string()
-    pdf.set_font("Arial", "", 10)
-    pdf.multi_cell(0, 5, stats_text)
+# Zapis wyników do pliku (opcjonalnie)
+results_df.to_csv("model_results.csv", index=False)
+print("\n📁 Wyniki zapisano do pliku: model_results.csv")
 
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "Wykresy eksploracyjne:", 0, 1)
-    for img in ["score_distribution.png", "score_by_gender.png"]:
-        pdf.image(img, w=180)
-        pdf.ln(5)
-
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "Wyniki modeli:", 0, 1)
-    pdf.set_font("Arial", "", 10)
-    for name, mae, mse, rmse, r2 in results:
-        pdf.multi_cell(0, 5, f"{name}\n  MAE: {mae:.3f}\n  MSE: {mse:.3f}\n  RMSE: {rmse:.3f}\n  R²: {r2:.3f}\n")
-
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "Najlepszy model:", 0, 1)
-    pdf.set_font("Arial", "", 10)
-    pdf.multi_cell(0, 5, f"{best_model_name}\nMAE: {mae:.3f}\nMSE: {mse:.3f}\nRMSE: {rmse:.3f}\nR²: {r2:.3f}")
-
-    pdf.output("README.pdf")
-
-create_pdf()
-print("✅ Raport zapisany jako README.pdf\n")
-
-print("==============================")
-print("✅ ZAKOŃCZONO ANALIZĘ I UCZENIE MODELU")
-print("==============================\n")
+print("\n✅ Proces zakończony sukcesem!\n")
