@@ -112,17 +112,9 @@ bool_cols = ['fcollege', 'mcollege', 'home', 'urban']
 existing_bool_cols = [c for c in bool_cols if c in data.columns]
 print(f"\nKolumny logiczne wykryte (próba mapowania): {existing_bool_cols}")
 
-bool_map = {
-    "true": 1, "false": 0,
-    "yes": 1, "no": 0,
-    "1": 1, "0": 0,
-    "t": 1, "f": 0,
-    "y": 1, "n": 0
-}
-
 for col in existing_bool_cols:
     # mapuj na stringi lowercase -> mapuj -> coerce -> zostaw NaN jeśli nie pasuje
-    data[col] = data[col].astype(str).str.strip().str.lower().map(bool_map)
+    data[col] = data[col].astype(str).str.strip().str.lower().map({"yes": 1, "no": 0})
     # Jeśli kolumna po mapowaniu jest cały NaN (np. była 0/1 jako liczba), spróbuj bez konwersji:
     if data[col].isnull().all():
         # spróbuj rzutowania numeric
