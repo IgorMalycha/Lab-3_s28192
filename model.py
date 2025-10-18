@@ -50,7 +50,7 @@ data = data.replace([" ", "NA", "N/A", "na", "NaN", "None"], np.nan)
 # Kolumny logiczne
 bool_cols = ['fcollege', 'mcollege', 'home', 'urban']
 for col in bool_cols:
-    data[col] = data[col].map({'True': 1, 'False': 0, True: 1, False: 0})
+    data[col] = data[col].map({'yes': 1, 'no': 0})
     data[col] = data[col].fillna(data[col].median())
 
 # Wypełnianie braków numerycznych medianą
