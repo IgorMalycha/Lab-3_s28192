@@ -1,13 +1,14 @@
 # ======================================
 #  ZADANIE 1 - MODEL PREDYKCYJNY
 #  Autor: Student XYZ
-#  Plik: model.py
+#  Plik: model_predykcyjny.py
 # ======================================
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
+import seaborn as sns
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -23,7 +24,7 @@ print("  ZADANIE 1 - MODEL PREDYKCYJNY")
 print("========================\n")
 
 # ===============================
-# 1️⃣ Wczytanie danych
+# 1️⃣ Wczytanie i eksploracja danych
 # ===============================
 print("📂 Wczytywanie danych...")
 
@@ -35,82 +36,88 @@ print(f"Liczba kolumn: {len(data.columns)}\n")
 print("Podgląd danych:")
 print(data.head(), "\n")
 
-# ===============================
-# 2️⃣ Wstępna analiza danych i czyszczenie
-# ===============================
-print("🔍 Analiza brakujących danych i czyszczenie...")
+# Statystyki opisowe
+print("📊 Statystyki opisowe:")
+print(data.describe(include='all'), "\n")
 
-# Zamiana błędnych wartości tekstowych na NaN
+# Wizualizacja rozkładu zmiennej docelowej
+plt.figure(figsize=(6,4))
+sns.histplot(data['score'], kde=True, color='skyblue')
+plt.title("Rozkład zmiennej docelowej 'score'")
+plt.show()
+
+# Macierz korelacji
+plt.figure(figsize=(10,8))
+sns.heatmap(data.corr(numeric_only=True), annot=True, fmt=".2f", cmap="coolwarm")
+plt.title("Macierz korelacji zmiennych numerycznych")
+plt.show()
+
+# ===============================
+# 2️⃣ Czyszczenie danych
+# ===============================
+print("🔍 Czyszczenie danych...")
+
+# Zamiana błędnych wartości na NaN
 data = data.replace([" ", "NA", "N/A", "na", "NaN", "None"], np.nan)
 
-# Kolumny logiczne — elastyczne mapowanie
+# Kolumny binarne
 bool_cols = ['fcollege', 'mcollege', 'home', 'urban']
 for col in bool_cols:
     data[col] = (
         data[col]
         .astype(str)
         .str.lower()
-        .map({"yes": 1, "no": 0,})
+        .map({"yes": 1, "no": 0})
     )
-    # Wypełnienie braków medianą (czyli 0 lub 1)
     if data[col].isnull().sum() > 0:
         data[col].fillna(data[col].median(), inplace=True)
-        print(f"✅ Kolumna '{col}' uzupełniona medianą: {data[col].median()}")
 
 # Wypełnianie braków numerycznych medianą
 for col in data.select_dtypes(include=[np.number]).columns:
     if data[col].isnull().sum() > 0:
-        median_val = data[col].median()
-        data[col].fillna(median_val, inplace=True)
-        print(f"🧮 Wypełniono braki w kolumnie '{col}' medianą: {median_val:.3f}")
+        data[col].fillna(data[col].median(), inplace=True)
 
 # Wypełnianie braków kategorycznych trybem
 for col in data.select_dtypes(include=["object"]).columns:
     if data[col].isnull().sum() > 0:
-        mode_val = data[col].mode()[0]
-        data[col].fillna(mode_val, inplace=True)
-        print(f"🗂️ Wypełniono braki w kolumnie '{col}' trybem: {mode_val}")
+        data[col].fillna(data[col].mode()[0], inplace=True)
 
-missing_after_total = data.isnull().sum().sum()
-print(f"\nBrakujące wartości po czyszczeniu: {missing_after_total}")
-
-if missing_after_total == 0:
-    print("✅ Wszystkie dane kompletne!\n")
-else:
-    print("⚠️ Nadal występują NaN-y po czyszczeniu!\n")
+print(f"Brakujące wartości po czyszczeniu: {data.isnull().sum().sum()}")
 
 # ===============================
-# 3️⃣ Przygotowanie danych
+# 3️⃣ Inżynieria cech
 # ===============================
-print("🧹 Przygotowanie danych...")
+print("\n🧠 Inżynieria cech...")
 
-# Usunięcie kolumny identyfikatora
+# Usunięcie zbędnych kolumn
 if "rownames" in data.columns:
     data.drop(columns=["rownames"], inplace=True)
-    print("🗑️ Kolumna 'rownames' została usunięta.\n")
 
-# Zmienna docelowa
+# Tworzenie nowych cech
+if "distance" in data.columns and "income" in data.columns:
+    data["income_per_distance"] = data["income"] / (data["distance"] + 1)
+    print("➕ Dodano cechę: income_per_distance")
+
+# Logarytmowanie zmiennej 'distance' (jeśli istnieje)
+if "distance" in data.columns:
+    data["log_distance"] = np.log1p(data["distance"])
+
+# ===============================
+# 4️⃣ Podział na zbiory treningowy i testowy
+# ===============================
 target = "score"
 X = data.drop(columns=[target])
 y = data[target]
 
-# Identyfikacja typów zmiennych
 num_features = X.select_dtypes(include=[np.number]).columns.tolist()
 cat_features = X.select_dtypes(include=["object"]).columns.tolist()
 
-print("🔢 Zmienne numeryczne:", num_features)
-print("🔠 Zmienne kategoryczne:", cat_features, "\n")
-
-# ===============================
-# 4️⃣ Podział danych
-# ===============================
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
 
-print("📈 Podział danych:")
-print(f" - Zbiór treningowy: {len(X_train)} próbek ({len(X_train)/len(data)*100:.1f}%)")
-print(f" - Zbiór testowy: {len(X_test)} próbek ({len(X_test)/len(data)*100:.1f}%)\n")
+print(f"Zbiór treningowy: {len(X_train)} próbek")
+print(f"Zbiór testowy: {len(X_test)} próbek\n")
 
 # ===============================
 # 5️⃣ Transformacje i pipeline
@@ -126,37 +133,30 @@ preprocessor = ColumnTransformer(
 )
 
 # ===============================
-# 6️⃣ Trening i ewaluacja modeli
+# 6️⃣ Trening modeli i uzasadnienie
 # ===============================
+print("🤖 Trenowanie modeli...\n")
+
+# Uzasadnienie (opis do raportu)
+"""
+MODELE:
+- Linear Regression → prosty model bazowy, służy jako punkt odniesienia.
+- Ridge Regression → regresja liniowa z regularyzacją L2, zapobiega przeuczeniu.
+- Random Forest → model nieliniowy, dobrze radzi sobie z interakcjami i brakami liniowości.
+"""
+
 models = {
     "Linear Regression": LinearRegression(),
     "Ridge Regression": Ridge(alpha=1.0),
     "Random Forest": RandomForestRegressor(n_estimators=100, random_state=42)
 }
 
-# Walidacja danych (czy nie zawierają NaN)
-if X_train.isnull().any().any():
-    print("⚠️ UWAGA: Dane treningowe zawierają NaN!")
-    print(X_train.isnull().sum()[X_train.isnull().sum() > 0])
-    X_train = X_train.fillna(0)
-    print("🔧 Uzupełniono NaN = 0 (awaryjnie)")
-
-if X_test.isnull().any().any():
-    print("⚠️ UWAGA: Dane testowe zawierają NaN!")
-    print(X_test.isnull().sum()[X_test.isnull().sum() > 0])
-    X_test = X_test.fillna(0)
-    print("🔧 Uzupełniono NaN = 0 (awaryjnie)")
-
 results = []
 
-print("🤖 Trenowanie modeli...\n")
-
 for name, model in models.items():
-    print(f"➡️  Trening modelu: {name}...")
     pipeline = Pipeline(steps=[('preprocessor', preprocessor),
                                ('model', model)])
     pipeline.fit(X_train, y_train)
-
     y_pred = pipeline.predict(X_test)
 
     r2 = r2_score(y_test, y_pred)
@@ -172,23 +172,50 @@ for name, model in models.items():
         "RMSE": rmse
     })
 
-    print(f"📊 Wyniki {name}:")
-    print(f"   R²:   {r2:.4f}")
-    print(f"   MAE:  {mae:.4f}")
-    print(f"   MSE:  {mse:.4f}")
-    print(f"   RMSE: {rmse:.4f}\n")
-
-# ===============================
-# 7️⃣ Podsumowanie wyników
-# ===============================
-print("📋 PODSUMOWANIE MODELI\n")
 results_df = pd.DataFrame(results)
-print(results_df.to_string(index=False))
+print(results_df)
 
-best_model = results_df.loc[results_df["R²"].idxmax()]
-print("\n🏆 Najlepszy model:", best_model["Model"])
-print(f"   R² = {best_model['R²']:.4f}, MAE = {best_model['MAE']:.4f}")
+# Wykres porównawczy
+plt.figure(figsize=(8,5))
+sns.barplot(x="Model", y="R²", data=results_df, palette="pastel")
+plt.title("Porównanie modeli wg R²")
+plt.show()
 
+# ===============================
+# 7️⃣ Optymalizacja najlepszego modelu
+# ===============================
+best_model_name = results_df.loc[results_df["R²"].idxmax(), "Model"]
+print(f"\n🏆 Najlepszy model: {best_model_name}\n")
+
+if best_model_name == "Random Forest":
+    param_grid = {
+        'model__n_estimators': [100, 200, 300],
+        'model__max_depth': [None, 10, 20, 30]
+    }
+
+    grid = GridSearchCV(
+        Pipeline(steps=[('preprocessor', preprocessor),
+                        ('model', RandomForestRegressor(random_state=42))]),
+        param_grid,
+        cv=5,
+        scoring='r2',
+        n_jobs=-1
+    )
+
+    grid.fit(X_train, y_train)
+    print("🔍 Najlepsze parametry:", grid.best_params_)
+    print(f"Średni R² (CV): {grid.best_score_:.4f}")
+
+# ===============================
+# 8️⃣ Walidacja krzyżowa i podsumowanie
+# ===============================
+pipeline_best = Pipeline(steps=[('preprocessor', preprocessor),
+                                ('model', RandomForestRegressor(random_state=42))])
+
+scores = cross_val_score(pipeline_best, X, y, cv=5, scoring='r2')
+print(f"\n📈 Średni wynik R² w walidacji krzyżowej: {scores.mean():.4f}")
+
+# Zapis wyników
 results_df.to_csv("model_results.csv", index=False)
 print("\n📁 Wyniki zapisano do pliku: model_results.csv")
 
