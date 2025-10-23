@@ -26,6 +26,9 @@ print("=" * 60 + "\n")
 # Wczytanie danych
 data = pd.read_csv("CollegeDistance.csv")
 
+if 'rownames' in data.columns:
+    data.drop(columns=['rownames'], inplace=True)
+
 print(f"Liczba rekordów: {len(data)}")
 print(f"Liczba kolumn: {len(data.columns)}")
 print(f"\nKolumny w datasecie: {list(data.columns)}\n")
@@ -163,8 +166,6 @@ except Exception as e:
 # ===============================
 # INŻYNIERIA CECH I PRZYGOTOWANIE DANYCH
 # ===============================
-if "rownames" in data.columns:
-    data.drop(columns=["rownames"], inplace=True)
 
 # Zmienna docelowa
 target = 'score'
