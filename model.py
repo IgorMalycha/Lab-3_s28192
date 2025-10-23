@@ -2,14 +2,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split, cross_val_score, learning_curve
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
-from sklearn.inspection import PartialDependenceDisplay
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -18,18 +17,16 @@ plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_palette("husl")
 
 data = pd.read_csv("CollegeDistance.csv")
-
 if 'rownames' in data.columns:
     data.drop(columns=['rownames'], inplace=True)
 
 print(f"Liczba rekordów: {len(data)}")
 print(f"Liczba kolumn: {len(data.columns)}")
-print(f"\nKolumny w datasecie: {list(data.columns)}\n")
+print(f"Kolumny w datasecie: {list(data.columns)}\n")
 print("Podgląd pierwszych 5 wierszy:")
 print(data.head())
 
 print(data.info())
-
 print(data.describe())
 
 missing_data = data.isnull().sum()
@@ -49,22 +46,14 @@ else:
 bool_cols = ['fcollege', 'mcollege', 'home', 'urban']
 for col in bool_cols:
     if col in data.columns:
-        data[col] = (
-            data[col]
-            .astype(str)
-            .str.lower()
-            .map({"yes": 1, "no": 0})
-        )
-        if data[col].isnull().sum() > 0:
-            data[col].fillna(data[col].median(), inplace=True)
-
-for col in data.select_dtypes(include=[np.number]).columns:
-    if data[col].isnull().sum() > 0:
+        data[col] = data[col].astype(str).str.lower().map({"yes": 1, "no": 0})
         data[col].fillna(data[col].median(), inplace=True)
 
+for col in data.select_dtypes(include=[np.number]).columns:
+    data[col].fillna(data[col].median(), inplace=True)
+
 for col in data.select_dtypes(include=["object"]).columns:
-    if data[col].isnull().sum() > 0:
-        data[col].fillna(data[col].mode()[0], inplace=True)
+    data[col].fillna(data[col].mode()[0], inplace=True)
 
 print(f"\nBrakujące wartości po czyszczeniu: {data.isnull().sum().sum()}\n")
 
@@ -75,14 +64,17 @@ y = data[target]
 num_features = X.select_dtypes(include=[np.number]).columns.tolist()
 cat_features = X.select_dtypes(include=['object']).columns.tolist()
 
-print(" Zmienne numeryczne:", num_features)
-print(" Zmienne kategoryczne:", cat_features)
+print("Zmienne numeryczne:", num_features)
+print("Zmienne kategoryczne:", cat_features)
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 numeric_transformer = Pipeline(steps=[('scaler', StandardScaler())])
 categorical_transformer = Pipeline(steps=[('encoder', OneHotEncoder(handle_unknown='ignore'))])
-preprocessor = ColumnTransformer(transformers=[('num', numeric_transformer, num_features), ('cat', categorical_transformer, cat_features)])
+preprocessor = ColumnTransformer(transformers=[
+    ('num', numeric_transformer, num_features),
+    ('cat', categorical_transformer, cat_features)
+])
 
 models = {
     'Linear Regression': LinearRegression(),
@@ -120,6 +112,8 @@ for name, model in models.items():
     })
 
 results_df = pd.DataFrame(results)
-print("\n Podsumowanie wyników modeli:")
+print("\nPodsumowanie wyników modeli:")
 print(results_df)
+
 results_df.to_csv('model_results.csv', index=False)
+
